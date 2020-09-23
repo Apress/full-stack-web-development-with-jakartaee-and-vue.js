@@ -1,0 +1,35 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto11
+      docker: 18
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+      - echo --- Setup application.properties ---
+      - sed -i -e "s,\${SSO_CLIENT_SECRET},${SSO_CLIENT_SECRET}," StartWithJEE-ejb/src/main/resources/application-${ENVIRONMENT}.properties
+      - echo --- Setup glassfish resources ---
+      - sed -i -e "s,\${DATABASE_USER},${DATABASE_USER}," docker/glassfish-resources.xml
+      - sed -i -e "s,\${DATABASE_PASSWORD},${DATABASE_PASSWORD}," docker/glassfish-resources.xml
+      - sed -i -e "s,\${DATABASE_URL},${DATABASE_URL}," docker/glassfish-resources.xml
+      - sed -i -e "s,\${DATABASE_NAME},${DATABASE_NAME}," docker/glassfish-resources.xml
+  build:
+    commands:
+      - echo Build started on `date`
+      - mvn clean install -P docker
+      - echo Building the Docker image...
+      - docker build --build-arg ENV_ARG=${ENVIRONMENT} -t $IMAGE_REPO_NAME:$ENVIRONMENT .
+      - docker tag $IMAGE_REPO_NAME:$ENVIRONMENT $AWS_ECR_URL/$IMAGE_REPO_NAME:$ENVIRONMENT
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - docker push $AWS_ECR_URL/$IMAGE_REPO_NAME:$ENVIRONMENT
+      - echo Creating imagedefinitions.json...
+      - printf '[{"name":"%s","imageUri":"%s"}]' daniel-delivery-jakartaee-cd-$ENVIRONMENT $AWS_ECR_URL/$IMAGE_REPO_NAME:$ENVIRONMENT > imagedefinitions.json
+artifacts:
+  files:
+    - imagedefinitions.json

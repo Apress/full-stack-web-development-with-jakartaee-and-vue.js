@@ -1,0 +1,94 @@
+Parameters:
+  Environment:
+    Description: Environment
+    Type: String
+    Default: dev
+Resources:
+
+  DanielDeliveryCognitoRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cognito-idp.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWS-NewDanielDelivery
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+                
+  DanielDeliveryCognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      Policies: 
+        PasswordPolicy: 
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      Schema: 
+        - AttributeDataType: String
+          Mutable: true
+          Name: foodType
+        - AttributeDataType: String
+          Mutable: true
+          Name: deliveryFee
+        - AttributeDataType: String
+          Mutable: true
+          Name: imageUrl
+        - AttributeDataType: String
+          Mutable: true
+          Required: true
+          Name: address
+        - AttributeDataType: String
+          Mutable: true
+          Required: true
+          Name: given_name
+        - AttributeDataType: String
+          Mutable: true
+          Required: true
+          Name: family_name
+        - AttributeDataType: String
+          Mutable: true
+          Required: true
+          Name: email
+      UsernameAttributes: 
+        - email
+      UserPoolName: !Sub danieldeliveryuserpool${Environment}
+      AutoVerifiedAttributes: 
+        - email
+     
+  DanielDeliveryCognitoClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties: 
+      AllowedOAuthFlows: 
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: 
+        - email
+        - openid
+        - profile
+      CallbackURLs: 
+        - http://localhost:8081/auth/
+      ClientName: !Sub danieldeliverycognitoclient${Environment}
+      GenerateSecret: true
+      UserPoolId: !Ref DanielDeliveryCognitoUserPool
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+      
+  DanielDeliveryCognitoDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties: 
+      Domain: !Sub danieldelivery${Environment}
+      UserPoolId: !Ref DanielDeliveryCognitoUserPool

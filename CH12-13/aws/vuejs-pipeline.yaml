@@ -1,0 +1,165 @@
+Resources:
+  DanielDeliveryCodePipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWS-NewDanielDelivery
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+  DanielDeliveryCodeBuildRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWS-NewDanielDelivery
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+
+  DanielDeliveryCodePipelineBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub daniel-delivery-vue-pipeline    
+      VersioningConfiguration:
+        Status: Enabled
+      
+  DanielDeliveryVuejsCodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: CodeBuild for Jakarta side
+      ServiceRole: !GetAtt DanielDeliveryCodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 10
+    DependsOn:
+      - DanielDeliveryCodePipelineBucket
+        
+  DanielDeliveryVuejsDeployPipeline:
+    Type: "AWS::CodePipeline::Pipeline"
+    Properties:
+      Name: !Sub daniel-delivery-vuejs-code-pipe
+      RoleArn: !GetAtt DanielDeliveryCodePipelineRole.Arn
+      ArtifactStore: 
+        Type: S3 
+        Location: !Ref DanielDeliveryCodePipelineBucket 
+      Stages: 
+        - 
+          Name: Source 
+          Actions: 
+            - 
+              Name: SourceAction
+              ActionTypeId: 
+                Category: Source 
+                Owner: AWS 
+                Version: 1 
+                Provider: S3 
+              OutputArtifacts: 
+                - Name: SourceOutput 
+              Configuration: 
+                S3Bucket: !Ref DanielDeliveryCodePipelineBucket 
+                S3ObjectKey: danieldeliveryvuejs.zip
+              RunOrder: 1 
+        - Name: BuildDev
+          Actions: 
+            - 
+              Name: CodeBuildDev
+              InputArtifacts:
+                - Name: SourceOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              OutputArtifacts: 
+                - Name: BuildDevOutput 
+              Configuration:
+                ProjectName: !Ref DanielDeliveryVuejsCodeBuild
+                EnvironmentVariables: '[{"name":"ENVIRONMENT","value":"development","type":"PLAINTEXT"}]'
+              RunOrder: 1
+        - Name: DeployDev
+          Actions:
+            - Name: DeployDev
+              RunOrder: 1
+              InputArtifacts:
+                - Name: BuildDevOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              Configuration:
+                BucketName: not set
+                Extract: true
+        - Name: ApprovalProd
+          Actions:
+            - Name: ApprovalProd
+              RunOrder: 1
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: Do you want to deploy to production?
+        - Name: BuildProd
+          Actions: 
+            - 
+              Name: CodeBuildProd
+              InputArtifacts:
+                - Name: SourceOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              OutputArtifacts: 
+                - Name: BuildProdOutput 
+              Configuration:
+                ProjectName: !Ref DanielDeliveryVuejsCodeBuild
+                EnvironmentVariables: '[{"name":"ENVIRONMENT","value":"production","type":"PLAINTEXT"}]'
+              RunOrder: 1
+        - Name: DeployProd
+          Actions:
+            - Name: DeployProd
+              RunOrder: 1
+              InputArtifacts:
+                - Name: BuildProdOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              Configuration:
+                BucketName: not set
+                Extract: true
+

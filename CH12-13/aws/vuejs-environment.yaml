@@ -1,0 +1,57 @@
+Parameters:
+  Environment:
+    Description: Environment
+    Type: String
+    Default: dev
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub newdanieldelivery${Environment}
+  S3BucketPolicy: 
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref S3Bucket
+      PolicyDocument: 
+        Statement: 
+          - 
+            Action: 
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource: 
+              Fn::Join: 
+                - ""
+                - 
+                  - "arn:aws:s3:::"
+                  - !Ref S3Bucket
+                  - "/*"
+            Principal: 
+              AWS: "*"
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        DefaultRootObject: index.html
+        Enabled: true
+        DefaultCacheBehavior:
+            ForwardedValues: 
+              QueryString: false
+            TargetOriginId: !Sub S3-newdanieldeliveryp${Environment}
+            ViewerProtocolPolicy: allow-all
+        CustomErrorResponses:
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        Origins:
+          - Id: !Sub S3-newdanieldeliveryp${Environment}
+            DomainName: !Sub newdanieldelivery${Environment}.s3.amazonaws.com
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+      Tags:
+        - Key: "env"
+          Value: !Sub ${Environment}         

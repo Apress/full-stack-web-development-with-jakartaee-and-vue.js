@@ -1,0 +1,299 @@
+Parameters:
+  Environment:
+    Description: Environment
+    Type: String
+    Default: dev
+  ECRUrl:
+    Description: ECRUrl
+    Type: String
+    Default: ecrurl
+  DBUser:
+    Description: DBUser
+    Type: String
+    Default: MyName
+  DBPassword:
+    Description: DBPassword
+    Type: String
+    Default: MyPassword
+Resources:
+  DanielDeliveryImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub daniel-delivery-images-${Environment}
+      
+  DanielDeliveryJakartaInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+    
+  DanielDeliveryJakartaVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+      
+  DanielDeliveryJakartaAttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      InternetGatewayId: !Ref DanielDeliveryJakartaInternetGateway
+      
+  DanielDeliveryJakartaSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: "us-east-1a"
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: "us-east-1b"
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+      
+  DanielDeliveryJakartaRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+      
+  DanielDeliveryJakartaInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: DanielDeliveryJakartaAttachGateway
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DanielDeliveryJakartaInternetGateway
+      RouteTableId: !Ref DanielDeliveryJakartaRouteTable
+      
+  DanielDeliveryJakartaSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DanielDeliveryJakartaRouteTable
+      SubnetId: !Ref DanielDeliveryJakartaSubnet1
+      
+  DanielDeliveryJakartaSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DanielDeliveryJakartaRouteTable
+      SubnetId: !Ref DanielDeliveryJakartaSubnet2
+      
+  DanielDeliveryJakartaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for loadbalancer
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref DanielDeliveryJakartaSubnet1
+        - !Ref DanielDeliveryJakartaSubnet2
+      SecurityGroups:
+        - !Ref DanielDeliveryJakartaSecurityGroup
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaLoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Protocol: HTTP
+      Port: 8080
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      TargetType: ip
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 10
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref DanielDeliveryJakartaLoadBalancer
+      Protocol: HTTP
+      Port: 8080
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref DanielDeliveryJakartaLoadBalancerTargetGroup
+          
+  #ECS
+  DanielDeliveryJakartaECSCloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/ecs/daniel-delivery-jakartaee-ecs-${Environment}
+      RetentionInDays: 7
+      
+  DanielDeliveryJakartaECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties: 
+      ClusterName: !Sub daniel-delivery-jakartaee-ecs-${Environment}
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties: 
+      Memory: 1024
+      Cpu: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - 'FARGATE'
+      TaskRoleArn: !Ref DanielDeliveryECSRole
+      ExecutionRoleArn: !Ref DanielDeliveryECSRole
+      ContainerDefinitions:
+        - Name: !Sub daniel-delivery-jakartaee-cd-${Environment}
+          Image: !Sub ${ECRUrl}:${Environment}
+          PortMappings:
+            - ContainerPort: 8080
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref DanielDeliveryJakartaECSCloudWatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: daniel-delivery
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+    - DanielDeliveryJakartaLoadBalancer
+    - DanielDeliveryJakartaLoadBalancerTargetGroup
+    Properties:
+      ServiceName: !Sub daniel-delivery-jakartaee-ser-${Environment}
+      TaskDefinition: !Ref DanielDeliveryJakartaECSTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: 1
+      LoadBalancers:
+      - TargetGroupArn: !Ref DanielDeliveryJakartaLoadBalancerTargetGroup
+        ContainerPort: 8080
+        ContainerName: !Sub daniel-delivery-jakartaee-cd-${Environment}
+      Cluster: !Ref DanielDeliveryJakartaECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref DanielDeliveryJakartaSubnet1
+            - !Ref DanielDeliveryJakartaSubnet2
+          SecurityGroups:
+            - !Ref DanielDeliveryJakartaSecurityGroup
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub daniel-delivery-jakartaee-po-${Environment}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+                
+#DB
+  DanielDeliveryJakartaSubnetDBMaster:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: "us-east-1c"
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+      
+  DanielDeliveryJakartaSubnetDBReplica:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DanielDeliveryJakartaVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: "us-east-1b"
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+          
+  DanielDeliveryJakartaSubnetDBMasterRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DanielDeliveryJakartaRouteTable
+      SubnetId: !Ref DanielDeliveryJakartaSubnetDBMaster
+      
+  DanielDeliveryJakartaSubnetDBReplicaRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DanielDeliveryJakartaRouteTable
+      SubnetId: !Ref DanielDeliveryJakartaSubnetDBReplica
+      
+  DanielDeliveryJakartaDBMasterSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DBSubnetGroup for RDS instances
+      SubnetIds:
+        - Ref: DanielDeliveryJakartaSubnetDBMaster
+        - Ref: DanielDeliveryJakartaSubnetDBReplica
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+        
+  DanielDeliveryMySQL:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      VPCSecurityGroups:
+      - Ref: DanielDeliveryJakartaSecurityGroup
+      AllocatedStorage: '5'
+      DBInstanceClass: db.m3.medium
+      Engine: MySQL
+      EngineVersion: 8.0
+      MasterUsername: !Sub ${DBUser}
+      MasterUserPassword: !Sub ${DBPassword}
+      DBSubnetGroupName: !Ref DanielDeliveryJakartaDBMasterSubnetGroup
+      DBInstanceIdentifier: !Sub daniel-delivery-db-${Environment}
+      DBName: danieldelivery
+      Tags: 
+        - Key: "env"
+          Value: !Sub ${Environment}
+    DeletionPolicy: Delete
