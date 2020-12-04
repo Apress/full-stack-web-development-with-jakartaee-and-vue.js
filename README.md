@@ -1,6 +1,6 @@
 # Apress Source Code
 
-This repository accompanies [*Full-Stack Web Development with JakartaEE and Vue.js *](http://www.apress.com/9781484263419) by Daniel Andres Pelaez Lopez (Apress, 2020).
+This repository accompanies [Full-Stack Web Development with JakartaEE and Vue.js](http://www.apress.com/9781484263419) by Daniel Andres Pelaez Lopez (Apress, 2020).
 
 [comment]: #cover
 ![Cover image](9781484263419.jpg)
